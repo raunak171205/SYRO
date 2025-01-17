@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Introduction and Projects</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Arial', sans-serif;
+            color: white;
+            background: url('syro.jpg') no-repeat center center fixed;
+            background-size: cover;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+            background: rgba(0, 0, 0, 0.6);
+            overflow-y: hidden;
+        }
+
+        .fade-in {
+            font-size: 1.5rem;
+            text-align: center;
+            visibility: hidden;
+            animation: fadeIn 3s ease-in-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        .projects {
+            margin-top: 50px;
+            display: none;
+            animation: fadeInUp 2s forwards;
+        }
+
+        .project {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            margin: 10px;
+            border-radius: 8px;
+            text-align: left;
+            width: 80%;
+            cursor: pointer;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="fade-in" id="intro">
+          We are a team of students from the Electronics and Communication Engineering department at Chitkara University.
+          Our team is focused on working with technologies like
+          the Internet of Things (IoT), VLSI circuit design, and signal analysis.
+        </div>
+
+        <div class="projects" id="project-list">
+            <div class="project" id="project1">
+                <h3>Project 1: Distance signal analysis</h3>
+                <p>Analyzing, and interpreting signals to determine distances in various applications.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const intro = document.getElementById('intro');
+        const projectList = document.getElementById('project-list');
+        const project1 = document.getElementById('project1');
+
+        // Fade-in effect
+        intro.style.visibility = 'visible';
+
+        // Show projects after 5 seconds delay
+        setTimeout(() => {
+            intro.style.display = 'none';
+            projectList.style.display = 'block';
+        }, 8000); // 3 seconds for fade-in + 5 seconds pause
+
+        // Navigate to another page when clicking on the h3
+        project1.addEventListener('click', () => {
+            window.location.href = 'page3.html'; // Replace 'nextpage.html' with your desired URL
+        });
+    </script>
+</body>
+</html>
