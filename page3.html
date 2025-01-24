@@ -5,8 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hand Distance Measurement</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-   <script src="https://www.gstatic.com/firebasejs/9.17.2/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.17.2/firebase-database.js"></script>
+
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -246,20 +245,7 @@
           ctx.strokeStyle = 'red';
           ctx.lineWidth = 2;
           ctx.strokeRect(xMin, yMin, handWidth, yMax - yMin);
-          const firebaseConfig = {
-      apiKey: "AIzaSyAIyzyN3E5Xhf2o-hJ7cFmfhqmPT-pr2pI",
-      authDomain: "showoff-2748b.firebaseapp.com",
-      databaseURL: "https://showoff-2748b-default-rtdb.firebaseio.com",
-      projectId: "showoff-2748b",
-      storageBucket: "showoff-2748b.firebasestorage.app",
-      messagingSenderId: "372297603332",
-      appId: "1:372297603332:web:bea7bdbfbb6ed8b5631851",
-    };
-
-    // Initialize Firebase
-    const app = firebase.initializeApp(firebaseConfig);
-    const db = firebase.getDatabase(app);
-        }
+        
       }
 
       requestAnimationFrame(detectHand);
