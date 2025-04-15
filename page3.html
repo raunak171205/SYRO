@@ -4,258 +4,486 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hand Distance Measurement</title>
+
+  <!-- External Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 
   <style>
     body {
-      font-family: Arial, sans-serif;
       margin: 0;
-      padding: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
       display: flex;
       flex-direction: column;
       align-items: center;
-      background-image: url('syro.jpg');  /* Use the image from the same directory */
-      background-size: cover;  /* Make sure it covers the entire body */
-      background-position: center; /* Center the background image */
-      height: 130vh;
+      background-color: #121212;
+      color: white;
+      min-height: 100vh;
+    }
+
+    h1 {
+      color: #4CAF50;
+      font-size: 2.5rem;
+      margin-bottom: 20px;
+      text-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+    }
+
+    .main-container {
+      width: 90%;
+      max-width: 1200px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .video-section {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
       width: 100%;
     }
 
-
-    .video-container {
+    .video-container, .output-container {
+      flex: 1;
+      position: relative;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      background-color: #000;
+      min-height: 300px;
       display: flex;
-      justify-content: space-between;
-      width: 50%;
-      height: 25vh;
-      background-color: rgb(0,0,0,0.5);
+      align-items: center;
+      justify-content: center;
     }
 
     video, canvas {
-      border: 1px solid black;
-      display: block;
-      width: 48%;
+      width: 100%;
       height: auto;
+      display: block;
+      background-color: #000;
     }
 
-    #distanceGraph {
-      width: 50%;
-      height: 50px;
-      margin-top: 20px;
-      background-color: rgb(0,0,0,0.5);
+    .graph-container {
+      width: 100%;
+      background-color: #1E1E1E;
+      border-radius: 8px;
+      padding: 15px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
 
-    .container {
-      text-align: center;
-      width: 50%;
+    .data-section {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
     }
 
     .table-container {
-      width: 80%;
-      height: 200px;
-      margin-top: 20px;
+      width: 100%;
+      max-height: 300px;
       overflow-y: auto;
-      background-color: white;
-      font-color: white;
-
+      background-color: #1E1E1E;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 20px;
-      font-color: white;
-    }
-
-    table, th, td {
-      border: 1px solid #131313;
-      font-color: white;
-
     }
 
     th, td {
-      padding: 8px;
+      padding: 12px 15px;
       text-align: center;
-      font-color: white;
-
+      border-bottom: 1px solid #444;
     }
 
     th {
-      background-color:white;
-      font-color: white;
-
+      background-color: #2C2C2C;
+      color: #4CAF50;
+      position: sticky;
+      top: 0;
     }
 
     tr:nth-child(even) {
-      background-color: #f9f9f9;
-      font-color: white;
+      background-color: #252525;
     }
 
+    tr:hover {
+      background-color: #333;
+    }
+
+    .info-panel {
+      background-color: #1E1E1E;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+
+    .status {
+      font-weight: bold;
+    }
+
+    .status.ready {
+      color: #4CAF50;
+    }
+
+    .status.error {
+      color: #FF5252;
+    }
+
+    .status.warning {
+      color: #FFC107;
+    }
+
+    .permission-help {
+      background-color: #2C2C2C;
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 20px;
+      display: none;
+    }
+
+    .camera-fallback {
+      color: #AAA;
+      text-align: center;
+      padding: 20px;
+      display: none;
+    }
+
+    .retry-button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-top: 10px;
+    }
+
+    .retry-button:hover {
+      background-color: #45a049;
+    }
+
+    @media (max-width: 768px) {
+      .video-section {
+        flex-direction: column;
+      }
+
+      h1 {
+        font-size: 1.8rem;
+      }
+    }
   </style>
 </head>
 <body>
+  <div class="main-container">
+    <h1>Hand Distance Measurement System</h1>
 
-  <h1 style="color: white; font-family: 'Georgia', serif; font-size: 30px; font-weight: bold;">
-    Hand Distance Measurement
-</h1>
+    <div class="info-panel">
+      <p>Status: <span class="status" id="statusText">Initializing...</span></p>
+      <p>Current Distance: <span id="currentDistance">--</span> cm</p>
+    </div>
 
+    <div class="video-section">
+      <div class="video-container">
+        <video id="video" autoplay playsinline muted></video>
+        <div class="camera-fallback" id="cameraFallback">
+          <p>Unable to access camera. Please ensure you've granted camera permissions.</p>
+          <button class="retry-button" id="retryButton">Retry Camera Access</button>
+        </div>
+      </div>
+      <div class="output-container">
+        <canvas id="canvas" width="1280" height="720"></canvas>
+      </div>
+    </div>
 
-  <div class="video-container">
-    <!-- Video Elements -->
-    <video id="video" autoplay playsinline width="320" height="240" style="border: 1px solid black;"></video>
-    <canvas id="canvas" width="320" height="240" style="border: 1px solid black;"></canvas>
-  </div>
+    <div class="permission-help" id="permissionHelp">
+      <h3>Camera Access Help</h3>
+      <p>If you're having trouble with camera access:</p>
+      <ul>
+        <li>Check your browser's permission settings for this site</li>
+        <li>Ensure no other application is using your camera</li>
+        <li>Try refreshing the page and granting permission when prompted</li>
+        <li>If using Chrome, check for camera restrictions in <code>chrome://settings/content/camera</code></li>
+      </ul>
+    </div>
 
-  <div class="container">
+    <div class="graph-container">
+      <canvas id="distanceGraph"></canvas>
+    </div>
 
-    <canvas id="distanceGraph"></canvas>
-  </div>
-
-  <div class="container">
-    <h2></h2>
-    <div class="table-container">
-      <table id="dataTable">
-        <thead>
-          <tr>
-            <th>Time (s)</th>
-            <th>Distance (cm)</th>
-          </tr>
-        </thead>
-        <tbody>
-          <!-- Data entries will appear here -->
-        </tbody>
-      </table>
+    <div class="data-section">
+      <div class="table-container">
+        <table id="dataTable">
+          <thead>
+            <tr>
+              <th>Time (s)</th>
+              <th>Distance (cm)</th>
+              <th>Hand Width (px)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
   <script>
-
-
+    // DOM Elements
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const ctxChart = document.getElementById('distanceGraph').getContext('2d');
     const dataTable = document.getElementById('dataTable').getElementsByTagName('tbody')[0];
+    const statusText = document.getElementById('statusText');
+    const currentDistanceDisplay = document.getElementById('currentDistance');
+    const cameraFallback = document.getElementById('cameraFallback');
+    const permissionHelp = document.getElementById('permissionHelp');
+    const retryButton = document.getElementById('retryButton');
 
-    const distanceData = {
-      labels: [],
-      datasets: [{
-        label: 'Distance (cm)',
-        borderColor: 'rgba(75, 192, 192, 1)',
-        data: [],
-        fill: false,
-        borderWidth: 2,
-        tension: 0.1
-      }]
-    };
-
+    // Chart Configuration
+    const ctxChart = document.getElementById('distanceGraph').getContext('2d');
     const distanceChart = new Chart(ctxChart, {
       type: 'line',
-      data: distanceData,
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Hand Distance (cm)',
+          data: [],
+          borderColor: '#4CAF50',
+          backgroundColor: 'rgba(76, 175, 80, 0.1)',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.1
+        }]
+      },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         scales: {
           x: {
-            type: 'linear',
-            position: 'bottom',
-            title: { display: true, text: 'Time (s)' }
+            title: { display: true, text: 'Time (s)', color: '#AAA' },
+            grid: { color: 'rgba(255,255,255,0.1)' },
+            ticks: { color: '#AAA' }
           },
           y: {
+            title: { display: true, text: 'Distance (cm)', color: '#AAA' },
             min: 0,
             max: 200,
-            title: { display: true, text: 'Distance (cm)' }
+            grid: { color: 'rgba(255,255,255,0.1)' },
+            ticks: { color: '#AAA' }
           }
+        },
+        plugins: {
+          legend: { labels: { color: '#AAA' } }
         }
       }
     });
 
-    let startTime = Date.now();
-    let lastUpdateTime = Date.now();
+    // Constants
+    const REAL_HAND_WIDTH = 8.5; // Average adult hand width in cm
+    const FOCAL_LENGTH = 1000;   // Approximate focal length in pixels
 
-    // Access webcam and display video
-    navigator.mediaDevices.getUserMedia({ video: true })
-      .then((stream) => {
-        video.srcObject = stream;
-        video.play();
-      })
-      .catch((err) => {
-        console.error("Error accessing the webcam:", err);
+    // Variables
+    let startTime = Date.now();
+    let lastUpdateTime = 0;
+    const updateInterval = 200; // ms between updates
+    let camera;
+    let hands;
+
+    // Initialize MediaPipe Hands
+    function initializeHands() {
+      hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
       });
 
-    let FOCAL_LENGTH = 800; // Calibrated focal length, needs adjustment based on real-world tests
-    const REAL_HAND_WIDTH = 18; // Real-world hand width in cm
+      hands.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
 
-    function detectHand() {
-      const currentTime = Date.now();
-      const elapsedTimeInSeconds = (currentTime - startTime) / 1000;
-
-      if (currentTime - lastUpdateTime >= 1000) { // Update every second
-        lastUpdateTime = currentTime;
-
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-        for (let i = 0; i < frame.data.length; i += 4) {
-          const r = frame.data[i];
-          const g = frame.data[i + 1];
-          const b = frame.data[i + 2];
-
-          if (r > 95 && g > 40 && g < 100 && b < 100 && (r - g > 15)) {
-            frame.data[i] = 255;
-            frame.data[i + 1] = 255;
-            frame.data[i + 2] = 255;
-          } else {
-            frame.data[i] = 0;
-            frame.data[i + 1] = 0;
-            frame.data[i + 2] = 0;
-          }
-        }
-
-        ctx.putImageData(frame, 0, 0);
-
-        const contours = [];
-        for (let y = 0; y < canvas.height; y++) {
-          for (let x = 0; x < canvas.width; x++) {
-            const pixelIndex = (y * canvas.width + x) * 4;
-            if (frame.data[pixelIndex] === 255) {
-              contours.push({ x, y });
-            }
-          }
-        }
-
-        if (contours.length > 0) {
-          const xMin = Math.min(...contours.map(p => p.x));
-          const xMax = Math.max(...contours.map(p => p.x));
-          const yMin = Math.min(...contours.map(p => p.y));
-          const yMax = Math.max(...contours.map(p => p.y));
-
-          const handWidth = xMax - xMin;
-          const distance = (FOCAL_LENGTH * REAL_HAND_WIDTH) / handWidth;
-
-          distanceData.labels.push(elapsedTimeInSeconds);
-          distanceData.datasets[0].data.push(distance);
-
-          const newRow = dataTable.insertRow();
-          const cellTime = newRow.insertCell(0);
-          const cellDistance = newRow.insertCell(1);
-          cellTime.textContent = elapsedTimeInSeconds.toFixed(2);
-          cellDistance.textContent = distance.toFixed(2);
-
-          distanceChart.update();
-
-          ctx.strokeStyle = 'red';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(xMin, yMin, handWidth, yMax - yMin);
-
-        }
-      }
-
-      requestAnimationFrame(detectHand);
+      hands.onResults(processHandResults);
     }
 
-    video.addEventListener('play', () => {
-      detectHand();
-    });
+    // Process hand detection results
+    function processHandResults(results) {
+      try {
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+        // Draw camera feed
+        ctx.save();
+        ctx.scale(-1, 1);
+        ctx.translate(-canvas.width, 0);
+        ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
+
+        // Process hand landmarks
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+          updateStatus("Hand detected", "ready");
+
+          // Get landmarks for the first detected hand
+          const landmarks = results.multiHandLandmarks[0];
+
+          // Convert landmarks to pixel coordinates
+          const xValues = landmarks.map(pt => pt.x * canvas.width);
+          const yValues = landmarks.map(pt => pt.y * canvas.height);
+
+          // Calculate hand bounding box
+          const xMin = Math.min(...xValues);
+          const xMax = Math.max(...xValues);
+          const yMin = Math.min(...yValues);
+          const yMax = Math.max(...yValues);
+          const handPixelWidth = xMax - xMin;
+
+          // Calculate distance using perspective projection
+          const distance = (FOCAL_LENGTH * REAL_HAND_WIDTH) / handPixelWidth;
+
+          // Get current time in seconds
+          const currentTime = (Date.now() - startTime) / 1000;
+
+          // Draw landmarks and connections
+          drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {
+            color: '#00FF00',
+            lineWidth: 2
+          });
+          drawLandmarks(ctx, landmarks, {
+            color: '#FF0000',
+            radius: 3
+          });
+
+          // Draw bounding box
+          ctx.strokeStyle = '#4CAF50';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(xMin, yMin, xMax - xMin, yMax - yMin);
+
+          // Draw distance text
+          ctx.fillStyle = '#4CAF50';
+          ctx.font = 'bold 16px Arial';
+          ctx.fillText(`${distance.toFixed(1)} cm`, xMin, yMin - 10);
+
+          // Update display
+          currentDistanceDisplay.textContent = distance.toFixed(1);
+
+          // Throttle data updates
+          const now = Date.now();
+          if (now - lastUpdateTime > updateInterval) {
+            lastUpdateTime = now;
+
+            // Update chart
+            distanceChart.data.labels.push(currentTime.toFixed(1));
+            distanceChart.data.datasets[0].data.push(distance);
+            if (distanceChart.data.labels.length > 50) {
+              distanceChart.data.labels.shift();
+              distanceChart.data.datasets[0].data.shift();
+            }
+            distanceChart.update();
+
+            // Update table
+            const newRow = dataTable.insertRow(0);
+            newRow.insertCell(0).textContent = currentTime.toFixed(2);
+            newRow.insertCell(1).textContent = distance.toFixed(2);
+            newRow.insertCell(2).textContent = handPixelWidth.toFixed(1);
+
+            // Limit table rows
+            if (dataTable.rows.length > 20) {
+              dataTable.deleteRow(dataTable.rows.length - 1);
+            }
+          }
+        } else {
+          updateStatus("No hand detected", "warning");
+          currentDistanceDisplay.textContent = "--";
+        }
+      } catch (error) {
+        console.error("Error processing hand data:", error);
+        updateStatus("Error detecting hand", "error");
+        currentDistanceDisplay.textContent = "--";
+      }
+    }
+
+    // Update status display
+    function updateStatus(message, type) {
+      statusText.textContent = message;
+      statusText.className = "status " + type;
+    }
+
+    // Initialize camera
+    function initializeCamera() {
+      try {
+        camera = new Camera(video, {
+          onFrame: async () => {
+            try {
+              if (hands) {
+                await hands.send({ image: video });
+              }
+            } catch (error) {
+              console.error("Error processing frame:", error);
+              updateStatus("Processing error", "error");
+            }
+          },
+          width: 1280,
+          height: 720,
+          facingMode: "user"
+        });
+
+        return camera.start();
+      } catch (error) {
+        console.error("Camera initialization error:", error);
+        throw error;
+      }
+    }
+
+    // Show camera error
+    function showCameraError(error) {
+      console.error("Camera error:", error);
+      video.style.display = "none";
+      cameraFallback.style.display = "block";
+      permissionHelp.style.display = "block";
+      updateStatus("Camera access denied", "error");
+    }
+
+    // Retry camera access
+    async function retryCameraAccess() {
+      try {
+        updateStatus("Requesting camera...", "warning");
+        cameraFallback.style.display = "none";
+        permissionHelp.style.display = "none";
+        video.style.display = "block";
+
+        await initializeCamera();
+        updateStatus("Ready", "ready");
+      } catch (error) {
+        showCameraError(error);
+      }
+    }
+
+    // Start the application
+    async function startApp() {
+      try {
+        updateStatus("Initializing...", "warning");
+
+        // Initialize components
+        initializeHands();
+        await initializeCamera();
+
+        updateStatus("Ready", "ready");
+      } catch (error) {
+        showCameraError(error);
+      }
+    }
+
+    // Event listeners
+    retryButton.addEventListener('click', retryCameraAccess);
+
+    // Start when page loads
+    window.addEventListener('load', startApp);
   </script>
 </body>
 </html>
