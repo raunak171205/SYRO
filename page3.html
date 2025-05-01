@@ -12,6 +12,20 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 
   <style>
+    /* Logo Styles */
+    .logo-container {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 100;
+    }
+
+    .logo-container img {
+      height: 60px;
+      width: auto;
+      filter: drop-shadow(1px 1px 3px rgba(0,0,0,0.5));
+    }
+
     body {
       margin: 0;
       padding: 20px;
@@ -19,9 +33,10 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      background-color: #121212;
+      background-color: #707070;
       color: white;
       min-height: 100vh;
+      position: relative;
     }
 
     h1 {
@@ -66,12 +81,19 @@
       background-color: #000;
     }
 
-    .graph-container {
+    .graph-section {
+      display: flex;
+      gap: 20px;
       width: 100%;
+    }
+
+    .graph-container {
+      flex: 1;
       background-color: #1E1E1E;
       border-radius: 8px;
       padding: 15px;
       box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      height: 300px;
     }
 
     .data-section {
@@ -171,23 +193,40 @@
     }
 
     @media (max-width: 768px) {
-      .video-section {
+      .video-section, .graph-section {
         flex-direction: column;
       }
 
       h1 {
         font-size: 1.8rem;
       }
+
+      .logo-container {
+        position: static;
+        text-align: center;
+        margin-bottom: 15px;
+      }
+
+      .logo-container img {
+        height: 50px;
+      }
     }
   </style>
 </head>
 <body>
+  <!-- College Logo in Top Right Corner -->
+  <div class="logo-container">
+    <img src="collegelogo.png" alt="College Logo">
+  </div>
+
   <div class="main-container">
     <h1>Hand Distance Measurement System</h1>
 
     <div class="info-panel">
       <p>Status: <span class="status" id="statusText">Initializing...</span></p>
       <p>Current Distance: <span id="currentDistance">--</span> cm</p>
+      <p>Hand Pixel Width: <span id="pixelWidth">--</span> px</p>
+      <p>Focal Length: <span id="focalLength">1000</span> px</p>
     </div>
 
     <div class="video-section">
@@ -203,6 +242,15 @@
       </div>
     </div>
 
+    <div class="graph-section">
+      <div class="graph-container">
+        <canvas id="distanceGraph"></canvas>
+      </div>
+      <div class="graph-container">
+        <canvas id="relationGraph"></canvas>
+      </div>
+    </div>
+
     <div class="permission-help" id="permissionHelp">
       <h3>Camera Access Help</h3>
       <p>If you're having trouble with camera access:</p>
@@ -214,10 +262,6 @@
       </ul>
     </div>
 
-    <div class="graph-container">
-      <canvas id="distanceGraph"></canvas>
-    </div>
-
     <div class="data-section">
       <div class="table-container">
         <table id="dataTable">
@@ -226,6 +270,7 @@
               <th>Time (s)</th>
               <th>Distance (cm)</th>
               <th>Hand Width (px)</th>
+              <th>Focal Length (px)</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -242,6 +287,8 @@
     const dataTable = document.getElementById('dataTable').getElementsByTagName('tbody')[0];
     const statusText = document.getElementById('statusText');
     const currentDistanceDisplay = document.getElementById('currentDistance');
+    const pixelWidthDisplay = document.getElementById('pixelWidth');
+    const focalLengthDisplay = document.getElementById('focalLength');
     const cameraFallback = document.getElementById('cameraFallback');
     const permissionHelp = document.getElementById('permissionHelp');
     const retryButton = document.getElementById('retryButton');
@@ -285,9 +332,70 @@
       }
     });
 
+    // Relation Graph Configuration
+    const ctxRelation = document.getElementById('relationGraph').getContext('2d');
+    const relationChart = new Chart(ctxRelation, {
+      type: 'scatter',
+      data: {
+        datasets: [{
+          label: 'Distance vs Pixel Width',
+          data: [],
+          borderColor: '#FF9800',
+          backgroundColor: 'rgba(255, 152, 0, 0.5)',
+          borderWidth: 1,
+          pointRadius: 5,
+          pointHoverRadius: 7
+        }, {
+          label: 'Theoretical Relationship',
+          data: [],
+          borderColor: '#2196F3',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: 0,
+          type: 'line',
+          fill: false,
+          showLine: true
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            title: { display: true, text: 'Pixel Width (px)', color: '#AAA' },
+            grid: { color: 'rgba(255,255,255,0.1)' },
+            ticks: { color: '#AAA' }
+          },
+          y: {
+            title: { display: true, text: 'Distance (cm)', color: '#AAA' },
+            grid: { color: 'rgba(255,255,255,0.1)' },
+            ticks: { color: '#AAA' }
+          }
+        },
+        plugins: {
+          legend: { labels: { color: '#AAA' } },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                let label = context.dataset.label || '';
+                if (label) {
+                  label += ': ';
+                }
+                if (context.parsed.y !== null) {
+                  label += context.parsed.y.toFixed(1) + ' cm at ' +
+                           context.parsed.x.toFixed(1) + ' px';
+                }
+                return label;
+              }
+            }
+          }
+        }
+      }
+    });
+
     // Constants
     const REAL_HAND_WIDTH = 8.5; // Average adult hand width in cm
-    const FOCAL_LENGTH = 1000;   // Approximate focal length in pixels
+    let FOCAL_LENGTH = 1000;   // Approximate focal length in pixels
 
     // Variables
     let startTime = Date.now();
@@ -295,6 +403,8 @@
     const updateInterval = 200; // ms between updates
     let camera;
     let hands;
+    let currentPixelWidth = 0;
+    let currentDistance = 0;
 
     // Initialize MediaPipe Hands
     function initializeHands() {
@@ -312,18 +422,14 @@
       hands.onResults(processHandResults);
     }
 
-    // Process hand detection results
+    // Process hand detection results (MODIFIED FOR NON-MIRRORED VIEW)
     function processHandResults(results) {
       try {
         // Clear canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Draw camera feed
-        ctx.save();
-        ctx.scale(-1, 1);
-        ctx.translate(-canvas.width, 0);
+        // Draw camera feed (NON-MIRRORED)
         ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
-        ctx.restore();
 
         // Process hand landmarks
         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
@@ -341,10 +447,10 @@
           const xMax = Math.max(...xValues);
           const yMin = Math.min(...yValues);
           const yMax = Math.max(...yValues);
-          const handPixelWidth = xMax - xMin;
+          currentPixelWidth = xMax - xMin;
 
           // Calculate distance using perspective projection
-          const distance = (FOCAL_LENGTH * REAL_HAND_WIDTH) / handPixelWidth;
+          currentDistance = (FOCAL_LENGTH * REAL_HAND_WIDTH) / currentPixelWidth;
 
           // Get current time in seconds
           const currentTime = (Date.now() - startTime) / 1000;
@@ -367,30 +473,49 @@
           // Draw distance text
           ctx.fillStyle = '#4CAF50';
           ctx.font = 'bold 16px Arial';
-          ctx.fillText(`${distance.toFixed(1)} cm`, xMin, yMin - 10);
+          ctx.fillText(`${currentDistance.toFixed(1)} cm`, xMin, yMin - 10);
 
-          // Update display
-          currentDistanceDisplay.textContent = distance.toFixed(1);
+          // Update displays
+          currentDistanceDisplay.textContent = currentDistance.toFixed(1);
+          pixelWidthDisplay.textContent = currentPixelWidth.toFixed(1);
+          focalLengthDisplay.textContent = FOCAL_LENGTH;
 
           // Throttle data updates
           const now = Date.now();
           if (now - lastUpdateTime > updateInterval) {
             lastUpdateTime = now;
 
-            // Update chart
+            // Update distance chart
             distanceChart.data.labels.push(currentTime.toFixed(1));
-            distanceChart.data.datasets[0].data.push(distance);
+            distanceChart.data.datasets[0].data.push(currentDistance);
             if (distanceChart.data.labels.length > 50) {
               distanceChart.data.labels.shift();
               distanceChart.data.datasets[0].data.shift();
             }
             distanceChart.update();
 
+            // Update relation chart
+            relationChart.data.datasets[0].data.push({
+              x: currentPixelWidth,
+              y: currentDistance
+            });
+
+            // Keep only the last 20 points for clarity
+            if (relationChart.data.datasets[0].data.length > 20) {
+              relationChart.data.datasets[0].data.shift();
+            }
+
+            // Update theoretical relationship line
+            updateTheoreticalRelationship();
+
+            relationChart.update();
+
             // Update table
             const newRow = dataTable.insertRow(0);
             newRow.insertCell(0).textContent = currentTime.toFixed(2);
-            newRow.insertCell(1).textContent = distance.toFixed(2);
-            newRow.insertCell(2).textContent = handPixelWidth.toFixed(1);
+            newRow.insertCell(1).textContent = currentDistance.toFixed(2);
+            newRow.insertCell(2).textContent = currentPixelWidth.toFixed(1);
+            newRow.insertCell(3).textContent = FOCAL_LENGTH;
 
             // Limit table rows
             if (dataTable.rows.length > 20) {
@@ -400,12 +525,30 @@
         } else {
           updateStatus("No hand detected", "warning");
           currentDistanceDisplay.textContent = "--";
+          pixelWidthDisplay.textContent = "--";
         }
       } catch (error) {
         console.error("Error processing hand data:", error);
         updateStatus("Error detecting hand", "error");
         currentDistanceDisplay.textContent = "--";
+        pixelWidthDisplay.textContent = "--";
       }
+    }
+
+    // Update theoretical relationship line
+    function updateTheoreticalRelationship() {
+      const theoreticalData = [];
+      const minPx = 50;
+      const maxPx = 500;
+
+      for (let px = minPx; px <= maxPx; px += 10) {
+        theoreticalData.push({
+          x: px,
+          y: (FOCAL_LENGTH * REAL_HAND_WIDTH) / px
+        });
+      }
+
+      relationChart.data.datasets[1].data = theoreticalData;
     }
 
     // Update status display
@@ -414,7 +557,7 @@
       statusText.className = "status " + type;
     }
 
-    // Initialize camera
+    // Initialize camera (MODIFIED FOR NON-MIRRORED VIEW)
     function initializeCamera() {
       try {
         camera = new Camera(video, {
@@ -430,7 +573,7 @@
           },
           width: 1280,
           height: 720,
-          facingMode: "user"
+          facingMode: "environment" // Use rear camera (non-mirrored)
         });
 
         return camera.start();
@@ -472,6 +615,10 @@
         // Initialize components
         initializeHands();
         await initializeCamera();
+
+        // Initialize theoretical relationship
+        updateTheoreticalRelationship();
+        relationChart.update();
 
         updateStatus("Ready", "ready");
       } catch (error) {
