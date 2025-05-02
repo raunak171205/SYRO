@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Precision Eye Tracking with Cheat Detection</title>
+    <title>Project 3</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <style>
@@ -91,8 +91,32 @@
             transition: width 0.3s;
         }
 
+        .cheating-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ff0000;
+            color: white;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            font-size: 3rem;
+            text-align: center;
+            animation: pulse 1s infinite;
+        }
+
         @keyframes blink {
             50% { opacity: 0.5; }
+        }
+
+        @keyframes pulse {
+            0% { background-color: #ff0000; }
+            50% { background-color: #cc0000; }
+            100% { background-color: #ff0000; }
         }
 
         .status-item {
@@ -119,6 +143,7 @@
             <div id="distractionLevel" class="distraction-level"></div>
         </div>
         <div class="status-item">Status: <span id="statusText">Tracking...</span></div>
+        <div class="status-item">Warnings: <span id="warningCount">0</span>/3</div>
         <div id="cheatAlert" class="alert">CHEATING DETECTED! Excessive eye movement</div>
         <div id="distractAlert" class="alert">DISTRACTION DETECTED! Focus required</div>
     </div>
@@ -126,6 +151,12 @@
     <div class="loading" id="loading">
         <div style="font-size:24px;margin-bottom:20px">Loading...</div>
         <div>Please wait while we load the eye tracking models</div>
+    </div>
+
+    <div class="cheating-screen" id="cheatingScreen">
+        <h1>CHEATING DETECTED!</h1>
+        <p>You have been caught cheating multiple times</p>
+        <p>Further action will be taken against you</p>
     </div>
 
     <script>
@@ -143,6 +174,8 @@
         const cheatAlert = document.getElementById('cheatAlert');
         const distractAlert = document.getElementById('distractAlert');
         const loading = document.getElementById('loading');
+        const cheatingScreen = document.getElementById('cheatingScreen');
+        const warningCountDisplay = document.getElementById('warningCount');
 
         // Tracking Variables
         let leftEyeHistory = [];
@@ -153,6 +186,13 @@
         const maxDistraction = 100;
         const distractionThreshold = 50; // 50% for cheating alert
         const warningThreshold = 30; // 30% for distraction warning
+
+        // Voice alert variables
+        let lastWarningTime = 0;
+        const warningCooldown = 10000; // 10 seconds between voice warnings
+        let warningCount = 0;
+        const maxWarnings = 3; // Maximum number of voice warnings
+        let cheatingConfirmed = false;
 
         // Face Mesh Setup
         const faceMesh = new FaceMesh({
@@ -179,6 +219,8 @@
 
         // Process Face Mesh Results
         function processResults(results) {
+            if (cheatingConfirmed) return;
+
             // Set canvas dimensions
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
@@ -299,14 +341,67 @@
             }
         }
 
+        // Speak a warning message
+        function speakWarning() {
+            if (warningCount >= maxWarnings) return;
+
+            const now = Date.now();
+            if (now - lastWarningTime < warningCooldown) return;
+
+            lastWarningTime = now;
+            warningCount++;
+            warningCountDisplay.textContent = warningCount;
+
+            const messages = [
+                "Warning! Cheating detected. This is your first warning.",
+                "Second warning! Cheating detected. Further action will be taken.",
+                "Final warning! Cheating confirmed. Strict action will be taken against you."
+            ];
+
+            const msg = new SpeechSynthesisUtterance();
+            msg.text = messages[warningCount - 1];
+            msg.volume = 1;
+            msg.rate = 0.9;
+            msg.pitch = 1;
+
+            window.speechSynthesis.speak(msg);
+
+            // If this was the final warning, show cheating screen
+            if (warningCount >= maxWarnings) {
+                showCheatingScreen();
+            }
+        }
+
+        // Show the full-screen cheating detected message
+        function showCheatingScreen() {
+            cheatingConfirmed = true;
+            cheatingScreen.style.display = "flex";
+
+            // Speak final warning
+            const msg = new SpeechSynthesisUtterance();
+            msg.text = "Cheating confirmed. Your activity has been reported.";
+            msg.volume = 1;
+            msg.rate = 0.9;
+            msg.pitch = 1;
+            window.speechSynthesis.speak(msg);
+
+            // Stop the camera
+            camera.stop();
+        }
+
         // Check for cheating/distraction patterns
         function checkForCheating() {
+            if (cheatingConfirmed) return;
+
             if (distractionScore >= distractionThreshold && distractionTrend >= 0) {
                 // Cheating detected (high distraction + increasing trend)
                 cheatAlert.style.display = "block";
                 distractAlert.style.display = "none";
                 statusText.textContent = "CHEATING DETECTED!";
                 statusText.style.color = "#F44336";
+
+                // Trigger voice warning
+                speakWarning();
             }
             else if (distractionScore >= warningThreshold) {
                 // Distraction warning
