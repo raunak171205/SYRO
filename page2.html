@@ -88,6 +88,10 @@
                 <h3>Project 2: Dizziness Detector</h3>
                 <p>A system designed to monitor physical parameters and detect dizziness in real-time.</p>
             </div>
+            <div class="project" id="project3">
+                <h3>Project 3: Smart cheating detection </h3>
+                <p>A system designed to monitor physical parameters like eyes to detect cheating by learning the pattern in real-time.</p>
+            </div>
         </div>
     </div>
 
@@ -96,6 +100,7 @@
         const projectList = document.getElementById('project-list');
         const project1 = document.getElementById('project1');
         const project2 = document.getElementById('project2');
+        const project3 = document.getElementById('project3');
 
         // Fade-in effect
         intro.style.visibility = 'visible';
@@ -113,6 +118,9 @@
 
         project2.addEventListener('click', () => {
             window.location.href = 'page4.html';
+        });
+        project3.addEventListener('click', () => {
+            window.location.href = 'page5.html';
         });
     </script>
 </body>

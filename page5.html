@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Precision Eye Tracking with Cheat Detection</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: white;
+            padding: 20px;
+        }
+
+        .container {
+            position: relative;
+            width: 640px;
+            margin-top: 20px;
+        }
+
+        video, canvas {
+            width: 100%;
+            border-radius: 8px;
+            transform: scaleX(-1);
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            background: #1e1e1e;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 640px;
+        }
+
+        .loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .eye-marker {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: red;
+            border-radius: 50%;
+            z-index: 10;
+        }
+
+        .alert {
+            color: #ff5252;
+            font-weight: bold;
+            margin-top: 10px;
+            animation: blink 1s infinite;
+            display: none;
+        }
+
+        .distraction-meter {
+            height: 20px;
+            background: #333;
+            border-radius: 10px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+
+        .distraction-level {
+            height: 100%;
+            background: linear-gradient(to right, #4CAF50, #FFC107, #F44336);
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        @keyframes blink {
+            50% { opacity: 0.5; }
+        }
+
+        .status-item {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Eye Tracking for Cheat Detection</h1>
+    <p>Tracking eyeball movements and detecting cheating patterns from SYRO</p>
+
+    <div class="container">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="canvas"></canvas>
+        <div id="leftEyeMarker" class="eye-marker"></div>
+        <div id="rightEyeMarker" class="eye-marker"></div>
+    </div>
+
+    <div class="status">
+        <div class="status-item">Left Eye Position: <span id="leftEyePos">-</span></div>
+        <div class="status-item">Right Eye Position: <span id="rightEyePos">-</span></div>
+        <div class="status-item">Distraction Level: <span id="distractionPercent">0</span>%</div>
+        <div class="distraction-meter">
+            <div id="distractionLevel" class="distraction-level"></div>
+        </div>
+        <div class="status-item">Status: <span id="statusText">Tracking...</span></div>
+        <div id="cheatAlert" class="alert">CHEATING DETECTED! Excessive eye movement</div>
+        <div id="distractAlert" class="alert">DISTRACTION DETECTED! Focus required</div>
+    </div>
+
+    <div class="loading" id="loading">
+        <div style="font-size:24px;margin-bottom:20px">Loading...</div>
+        <div>Please wait while we load the eye tracking models</div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const leftEyeMarker = document.getElementById('leftEyeMarker');
+        const rightEyeMarker = document.getElementById('rightEyeMarker');
+        const leftEyePos = document.getElementById('leftEyePos');
+        const rightEyePos = document.getElementById('rightEyePos');
+        const distractionPercent = document.getElementById('distractionPercent');
+        const distractionLevel = document.getElementById('distractionLevel');
+        const statusText = document.getElementById('statusText');
+        const cheatAlert = document.getElementById('cheatAlert');
+        const distractAlert = document.getElementById('distractAlert');
+        const loading = document.getElementById('loading');
+
+        // Tracking Variables
+        let leftEyeHistory = [];
+        let rightEyeHistory = [];
+        const historyLength = 30; // Store last 30 positions
+        let distractionScore = 0;
+        let distractionTrend = 0;
+        const maxDistraction = 100;
+        const distractionThreshold = 50; // 50% for cheating alert
+        const warningThreshold = 30; // 30% for distraction warning
+
+        // Face Mesh Setup
+        const faceMesh = new FaceMesh({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+        });
+
+        faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: true,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.6
+        });
+
+        faceMesh.onResults(processResults);
+
+        // Camera Setup
+        const camera = new Camera(video, {
+            onFrame: async () => {
+                await faceMesh.send({image: video});
+            },
+            width: 640,
+            height: 480
+        });
+
+        // Process Face Mesh Results
+        function processResults(results) {
+            // Set canvas dimensions
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                const landmarks = results.multiFaceLandmarks[0];
+
+                // Get precise eyeball landmarks (MediaPipe 468-point model)
+                const leftEyeCenter = landmarks[468];  // Left eye center
+                const rightEyeCenter = landmarks[473]; // Right eye center
+
+                // Convert to pixel coordinates
+                const leftEyeX = leftEyeCenter.x * canvas.width;
+                const leftEyeY = leftEyeCenter.y * canvas.height;
+                const rightEyeX = rightEyeCenter.x * canvas.width;
+                const rightEyeY = rightEyeCenter.y * canvas.height;
+
+                // Update eye markers
+                updateEyeMarker(leftEyeMarker, leftEyeX, leftEyeY);
+                updateEyeMarker(rightEyeMarker, rightEyeX, rightEyeY);
+
+                // Update position displays
+                leftEyePos.textContent = `(${Math.round(leftEyeX)}, ${Math.round(leftEyeY)})`;
+                rightEyePos.textContent = `(${Math.round(rightEyeX)}, ${Math.round(rightEyeY)})`;
+
+                // Track eye movement patterns and calculate distraction
+                trackEyeMovement(leftEyeX, leftEyeY, rightEyeX, rightEyeY);
+
+                // Update distraction meter
+                updateDistractionMeter();
+
+                // Check for cheating/distraction
+                checkForCheating();
+
+                // Draw eye regions (optional)
+                drawEyeRegion(landmarks, 'left');
+                drawEyeRegion(landmarks, 'right');
+
+                statusText.textContent = "Tracking active";
+                statusText.style.color = "#4CAF50";
+            } else {
+                // No face detected
+                leftEyeMarker.style.display = 'none';
+                rightEyeMarker.style.display = 'none';
+                leftEyePos.textContent = '-';
+                rightEyePos.textContent = '-';
+                resetTracking();
+                statusText.textContent = "Face not detected";
+                statusText.style.color = "#FF9800";
+            }
+        }
+
+        // Track eye movement and calculate distraction score
+        function trackEyeMovement(leftX, leftY, rightX, rightY) {
+            // Store current positions
+            leftEyeHistory.push({x: leftX, y: leftY});
+            rightEyeHistory.push({x: rightX, y: rightY});
+
+            // Limit history size
+            if (leftEyeHistory.length > historyLength) {
+                leftEyeHistory.shift();
+                rightEyeHistory.shift();
+            }
+
+            // Calculate movement if we have enough history
+            if (leftEyeHistory.length > 5) {
+                let totalMovement = 0;
+
+                // Calculate movement for left eye
+                for (let i = 1; i < leftEyeHistory.length; i++) {
+                    totalMovement += Math.sqrt(
+                        Math.pow(leftEyeHistory[i].x - leftEyeHistory[i-1].x, 2) +
+                        Math.pow(leftEyeHistory[i].y - leftEyeHistory[i-1].y, 2)
+                    );
+                }
+
+                // Calculate movement for right eye
+                for (let i = 1; i < rightEyeHistory.length; i++) {
+                    totalMovement += Math.sqrt(
+                        Math.pow(rightEyeHistory[i].x - rightEyeHistory[i-1].x, 2) +
+                        Math.pow(rightEyeHistory[i].y - rightEyeHistory[i-1].y, 2)
+                    );
+                }
+
+                // Average movement per frame (normalized)
+                const avgMovement = totalMovement / (leftEyeHistory.length * 2 - 2);
+
+                // Calculate distraction score (0-100)
+                const newScore = Math.min(100, Math.round(avgMovement * 5));
+
+                // Smooth the distraction score
+                distractionScore = Math.round(distractionScore * 0.7 + newScore * 0.3);
+
+                // Update trend (increasing or decreasing)
+                if (newScore > distractionScore) {
+                    distractionTrend = Math.min(5, distractionTrend + 1);
+                } else {
+                    distractionTrend = Math.max(-5, distractionTrend - 1);
+                }
+            }
+        }
+
+        // Update distraction meter display
+        function updateDistractionMeter() {
+            distractionPercent.textContent = distractionScore;
+            distractionLevel.style.width = `${distractionScore}%`;
+
+            // Color coding
+            if (distractionScore < warningThreshold) {
+                distractionLevel.style.background = "#4CAF50"; // Green
+            } else if (distractionScore < distractionThreshold) {
+                distractionLevel.style.background = "#FFC107"; // Yellow
+            } else {
+                distractionLevel.style.background = "#F44336"; // Red
+            }
+        }
+
+        // Check for cheating/distraction patterns
+        function checkForCheating() {
+            if (distractionScore >= distractionThreshold && distractionTrend >= 0) {
+                // Cheating detected (high distraction + increasing trend)
+                cheatAlert.style.display = "block";
+                distractAlert.style.display = "none";
+                statusText.textContent = "CHEATING DETECTED!";
+                statusText.style.color = "#F44336";
+            }
+            else if (distractionScore >= warningThreshold) {
+                // Distraction warning
+                cheatAlert.style.display = "none";
+                distractAlert.style.display = "block";
+                statusText.textContent = "Distraction detected";
+                statusText.style.color = "#FFC107";
+            }
+            else {
+                // Normal state
+                cheatAlert.style.display = "none";
+                distractAlert.style.display = "none";
+                statusText.textContent = "Tracking active";
+                statusText.style.color = "#4CAF50";
+            }
+        }
+
+        // Update eye marker position
+        function updateEyeMarker(marker, x, y) {
+            marker.style.display = 'block';
+            marker.style.left = `${x - 4}px`;
+            marker.style.top = `${y - 4}px`;
+        }
+
+        // Draw eye region
+        function drawEyeRegion(landmarks, side) {
+            const indices = side === 'left' ?
+                [33, 246, 161, 160, 159, 158, 157, 173, 133] : // Left eye
+                [362, 398, 384, 385, 386, 387, 388, 466, 263];  // Right eye
+
+            ctx.strokeStyle = '#4fc3f7';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+
+            // Draw eye shape
+            for (let i = 0; i < indices.length; i++) {
+                const point = landmarks[indices[i]];
+                const x = point.x * canvas.width;
+                const y = point.y * canvas.height;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+
+            ctx.closePath();
+            ctx.stroke();
+        }
+
+        // Reset tracking variables
+        function resetTracking() {
+            leftEyeHistory = [];
+            rightEyeHistory = [];
+            distractionScore = 0;
+            distractionTrend = 0;
+            distractionLevel.style.width = "0%";
+            distractionPercent.textContent = "0";
+        }
+
+        // Start the application
+        async function start() {
+            try {
+                await camera.start();
+                loading.style.display = 'none';
+            } catch (error) {
+                loading.innerHTML = `
+                    <div style="color:#ff5252;text-align:center">
+                        <h3>Error</h3>
+                        <p>${error.message}</p>
+                        <p>Please allow camera access and refresh</p>
+                    </div>
+                `;
+                console.error("Camera Error:", error);
+            }
+        }
+
+        // Initialize
+        start();
+    </script>
+</body>
+</html>
